@@ -4,9 +4,8 @@
 - This data does not include non-degree student enrollment
 
 # TO DO:
-## ORED research reports:
-- delete XLSX monstrosities
-
+## ORED research reports: 
+~~delete XLSX monstrosities~~
 - ~~convert ored reports from thousands of dollars to dollars~~
 - ~~normalize unit names~~
 - ~~generate primary id's~~
