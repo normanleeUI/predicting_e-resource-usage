@@ -44,6 +44,7 @@
 - decide how to convert the AY stats into FY stats for research assets
     - this will have to be done after the entire dataset is completed via robustness analysis later, systematically varying which ones are assigned which fiscal year, since improving the data is impractical.
 - convert all xlsx to csv? before or after analysis?
+    - csv would be better because it's not proprietary, but they're in the gitignore so it's not a problem with future commits. It would only be a problem for interoperability/shareability.
 
 # Thoughts:
 The **final fields** for each of these things should be:
