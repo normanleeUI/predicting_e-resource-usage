@@ -2,6 +2,8 @@ This is a repository created by Norman Lee for the Fall 2024 semester of Wildlif
 
 Date created: 2024-09-03
 
+Note: 'code' file is borked due to OneDrive upload weirdness. Will not allow me to make a file named 'code' as part of this repo. figure out a workaround.
+
 The main goals of this repository are:
 1. connect several datasets related to e-resource usage:
     1. e-resource usage
