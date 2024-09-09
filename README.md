@@ -1,8 +1,6 @@
 This is a repository created by Norman Lee for the Fall 2024 semester of Wildlife 553, taught by Prof. Simona Picardi.
 
 Date created: 2024-09-03
-Dates modified:
-- 
 
 The main goals of this repository are:
 1. connect several datasets related to e-resource usage:
