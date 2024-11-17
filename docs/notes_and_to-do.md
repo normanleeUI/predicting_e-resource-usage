@@ -4,37 +4,6 @@
 - This data does not include non-degree student enrollment
 
 # TO DO:
-## ORED research reports: 
-~~delete XLSX monstrosities~~
-- ~~convert ored reports from thousands of dollars to dollars~~
-- ~~normalize unit names~~
-- ~~generate primary id's~~
-~~decide what to do about xlsx monstrosities~~
-
-## Research outputs:
-- standardize dates
-- create sums of number of research outputs by college, unit, and type
-    - make sure you don't double-count research outputs with the same organization listed twice
-
-- ~~Get extension documents? (Parent unit is allowed to be University of Idaho Extension. Then that just goes to cals)~~
-    - ~~decided i don't care enough at this preliminary stage~~
-- ~~roll-up data so that assets with multiple affiliations only take up one row, with each affiliation in its own cell (OpenRefine)~~
-~~- lots of assets have blanks for "asset published date" include most of the ETD's it looks like. Go back and get dates for these.~~
-- ~~go back and get COGS & Law publications~~
-- ~~find out why Law and COGS doesn't have any pubs~~
-    - ~~because I selected based on the parent of the organizational unit, rather than the unit itself. Law doesn't have any sub-units, so the parent was U of I. I deleted all assets with U of I affiliation.~~
-- ~~decide how to deal with assets with multiple unit affiliations. Do they count for both units? Or just one? If just one, how is that selected?~~
-    - ~~both~~
-- ~~normalize organization names~~
-
-## Enrollment:
-- ~~roll-up enrollment numbers into college (OpenRefine)
-- convert terms into fiscal years
-- get spring data and combine with fall data
-
-## Platform usage:
-- match platforms to subjects via tags on databases A-Z list
-- calculate usage per unique title
 
 ## Aggregation:
 - assign unique ID's based on fiscal year + college matches
