@@ -86,7 +86,11 @@ platform_usage <- select(platform_usage,
 ## concatenate "organization.parent.unit.name" columns and drop them in addition to removing/renaming ####
 
 research_outputs <- research_outputs %>%
-  mutate(unit_affiliations = apply(research_outputs[, 9:16], 1, function(row) list(row[row != "" & !is.na(row)]))) %>% 
+  mutate(unit_affiliations = lapply(1:nrow(research_outputs), function(i){
+    row <- research_outputs[i, 9:16]
+    row[row != "" & !is.na(row)]
+    })
+    ) %>% 
   select(asset_id = "Asset.Id",
          pub_year = "Asset.Published.Date..String.",
          type = "Asset.Type",
@@ -106,18 +110,9 @@ fall_enrollment_sums <- fall_enrollment %>%
 
 view(fall_enrollment_sums)
 
-# count research outputs by academic unit and fiscal year ####
+# pre-process research outputs #### 
 
 ## clean pub_year column ####
-# cases:
-# yyyy | possible regular expression: ^\d{4}$
-# NULL and ""
-# dd/mm/yyyy (doesn't always include leading 0's) | ^([1-9]|[12][0-9]|3[01])/([1-9]|1[12])/(19|20)\d{2}$
-# mm/dd/yyyy (doesn't always include leading 0's) | ^([1-9]|1[12])/([1-9]|[12][0-9]|3[01])/(19|20)\d{2}$
-# yy-mmm (3 alphanumeric characters for month abbreviation; doesn't always inclued leading 0's) | ^\\d{1,2}-[a-zA-Z]{3}$
-# mmm-yy (3 alphanumeric characters for month abbreviation; doesn't always inclued leading 0's) | ^[a-zA-Z]{3}-\\d{1,2}$
-
-
 
 research_outputs <- research_outputs %>% 
   mutate(
@@ -153,20 +148,26 @@ research_outputs <- research_outputs %>%
   )
 )
 
-
 ## assign fiscal years; randomly generate if necessary ####
 
 research_outputs <- research_outputs %>% 
-  mutate(fiscal_year = case_when(
-    needs_fy_sim == TRUE ~ case_when(
-      sample(1:2, n(), replace = TRUE) == 1 ~ as.integer(pub_year),
-      sample(1:2, n(), replace = TRUE) == 2 ~ as.integer(pub_year)+1
-    ),
-    
-    
-  ))
+  mutate(
+    random_number = runif(n()),
+    fiscal_year = case_when(
+      needs_fy_sim == TRUE & random_number < 0.5 ~ as.integer(year(pub_year_cleaned)),
+      needs_fy_sim == TRUE & random_number >= 0.5 ~ as.integer(year(pub_year_cleaned))-1,
+      needs_fy_sim == FALSE & month(pub_year_cleaned) >= 7 ~ as.integer(year(pub_year_cleaned)),
+      needs_fy_sim == FALSE & month(pub_year_cleaned) < 7 ~ as.integer(year(pub_year_cleaned))-1
+    ))
 
 view(research_outputs)
 
 ## add a modifier that divides the "effort" of the publication by the number of unique academic units listed as authors
 
+research_outputs <- research_outputs %>%
+  mutate(
+    unique_affiliations = lapply(research_outputs$unit_affiliations, function(x) length(unique(x))),
+    effort_per_affiliation = lapply(research_outputs$unique_affiliations, function(x) 1/x)
+    )
+
+# count research outputs by academic unit and fiscal year ####
