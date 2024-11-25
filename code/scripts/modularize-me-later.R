@@ -84,7 +84,6 @@ platform_usage <- select(platform_usage,
                          unique_titles = "Title.Identifier.Count")
 
 ## concatenate "organization.parent.unit.name" columns and drop them in addition to removing/renaming ####
-
 research_outputs <- research_outputs %>%
   mutate(unit_affiliations = lapply(1:nrow(research_outputs), function(i){
     row <- research_outputs[i, 9:16]
@@ -97,23 +96,16 @@ research_outputs <- research_outputs %>%
          unit_affiliations)
 
 # sum enrollment numbers ####
-
 spring_enrollment_sums <- spring_enrollment %>% 
   group_by(term, college) %>% 
   summarize(total_enrollment = sum(enrollment, na.rm = TRUE))
-
-view(spring_enrollment_sums)
 
 fall_enrollment_sums <- fall_enrollment %>% 
   group_by(term, college) %>% 
   summarize(total_enrollment = sum(enrollment, na.rm = TRUE))
 
-view(fall_enrollment_sums)
-
 # pre-process research outputs #### 
-
 ## clean pub_year column ####
-
 research_outputs <- research_outputs %>% 
   mutate(
     pub_year_cleaned = case_when(
@@ -149,7 +141,6 @@ research_outputs <- research_outputs %>%
 )
 
 ## assign fiscal years; randomly generate if necessary ####
-
 research_outputs <- research_outputs %>% 
   mutate(
     random_number = runif(n()),
@@ -160,14 +151,12 @@ research_outputs <- research_outputs %>%
       needs_fy_sim == FALSE & month(pub_year_cleaned) < 7 ~ as.integer(year(pub_year_cleaned))-1
     ))
 
-view(research_outputs)
 
 ## add a modifier that divides the "effort" of the publication by the number of unique academic units listed as authors
-
 research_outputs <- research_outputs %>%
   mutate(
-    unique_affiliations = lapply(research_outputs$unit_affiliations, function(x) length(unique(x))),
-    effort_per_affiliation = lapply(research_outputs$unique_affiliations, function(x) 1/x)
+    unique_affiliations = lapply(research_outputs$unit_affiliations, function(i) length(unique(i))),
+    effort_per_affiliation = lapply(research_outputs$unique_affiliations, function(i) 1/i)
     )
 
 # count research outputs by academic unit and fiscal year ####
