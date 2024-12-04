@@ -16,41 +16,41 @@ fall_enrollment <- read_xlsx('raw_data/fall-enrollment_by_college-major-and-seme
 grant_funding <- read_xlsx('raw_data/funding-reports-combined_by_college-and-fy.xlsx')
 
 # explore data ####
-View(az_database_list)
-for (i in colnames(az_database_list)){
-  class <- class(az_database_list[[i]])
-  cat(col_blue(i), ': ', col_red(class), "\n")
-}
-
-View(fall_enrollment)
-for (i in colnames(fall_enrollment)){
-  class <- class(fall_enrollment[[i]])
-  cat(col_blue(i), ': ', col_red(class), "\n")
-}
-
-View(spring_enrollment)
-for (i in colnames(spring_enrollment)){
-  class <- class(spring_enrollment[[i]])
-  cat(col_blue(i), ': ', col_red(class), "\n")
-}
-
-View(grant_funding)
-for (i in colnames(grant_funding)){
-  class <- class(grant_funding[[i]])
-  cat(col_blue(i), ': ', col_red(class), "\n")
-}
-
-View(platform_usage)
-for (i in colnames(platform_usage)){
-  class <- class(platform_usage[[i]])
-  cat(col_blue(i), ': ', col_red(class), "\n")
-}
-
-View(research_outputs)
-for (i in colnames(research_outputs)){
-  class <- class(research_outputs[[i]])
-  cat(col_blue(i), ': ', col_red(class), "\n")
-}
+# View(az_database_list)
+# for (i in colnames(az_database_list)){
+#   class <- class(az_database_list[[i]])
+#   cat(col_blue(i), ': ', col_red(class), "\n")
+# }
+# 
+# View(fall_enrollment)
+# for (i in colnames(fall_enrollment)){
+#   class <- class(fall_enrollment[[i]])
+#   cat(col_blue(i), ': ', col_red(class), "\n")
+# }
+# 
+# View(spring_enrollment)
+# for (i in colnames(spring_enrollment)){
+#   class <- class(spring_enrollment[[i]])
+#   cat(col_blue(i), ': ', col_red(class), "\n")
+# }
+# 
+# View(grant_funding)
+# for (i in colnames(grant_funding)){
+#   class <- class(grant_funding[[i]])
+#   cat(col_blue(i), ': ', col_red(class), "\n")
+# }
+# 
+# View(platform_usage)
+# for (i in colnames(platform_usage)){
+#   class <- class(platform_usage[[i]])
+#   cat(col_blue(i), ': ', col_red(class), "\n")
+# }
+# 
+# View(research_outputs)
+# for (i in colnames(research_outputs)){
+#   class <- class(research_outputs[[i]])
+#   cat(col_blue(i), ': ', col_red(class), "\n")
+# }
 
 # remove unnecessary columns and rename remaining ones ####
 az_database_list <- select(az_database_list,
@@ -84,11 +84,13 @@ platform_usage <- select(platform_usage,
                          unique_titles = "Title.Identifier.Count")
 
 ## concatenate "organization.parent.unit.name" columns and drop them in addition to removing/renaming ####
+print(unique(unlist(research_outputs[9:16])))
+
 research_outputs <- research_outputs %>%
   mutate(unit_affiliations =
            lapply(1:nrow(research_outputs), function(i){
              row <- research_outputs[i, 9:16] # should find some way to avoid hardcoding these in the future
-             unique(row[row != "" & !is.na(row)]) # didn't see any empty strings in there but just in case.
+             unique(row[row != ""]) # didn't see any empty strings in there but just in case.
              })
          ) %>% 
   select(asset_id = "Asset.Id",
@@ -96,8 +98,12 @@ research_outputs <- research_outputs %>%
          type = "Asset.Type",
          unit_affiliations)
 
+# debug
+# print(unique(unlist(research_outputs$unit_affiliations)))
+
 # pre-process research outputs #### 
 ## clean pub_year column ####
+# print(unique(research_outputs$pub_year))
 research_outputs <- research_outputs %>% 
   mutate(
     pub_year_cleaned = case_when(
@@ -171,36 +177,41 @@ research_output_counts <- data.frame(
   )
 
 # debug
-research_output_debug <- left_join(research_output_counts, research_outputs, by = "asset_id") %>% 
-  select(asset_id,
-         fy_college,
-         pub_year_cleaned,
-         unit_affiliations,
-         count_unique_affiliations,
-         output_effort_units,
-         effort_per_affiliation) %>% 
-  mutate(
-    effort_match = case_when(
-      output_effort_units == effort_per_affiliation ~ 'GOOD',
-      output_effort_units != effort_per_affiliation ~ 'BAD',
-      TRUE ~ 'SOMETHING ELSE'
-    ),
-    
-    affiliations_match = case_when(
-      sapply(unit_affiliations, length) == count_unique_affiliations ~ 'GOOD',
-      sapply(unit_affiliations, length) != count_unique_affiliations ~ 'BAD',
-      TRUE ~ 'SOMETHING ELSE'
-      ),
-    
-    fy_date_match = case_when(
-    as.integer(str_sub(fy_college, start = 1, end = 4)) == year(pub_year_cleaned) ~ 'GOOD',
-    year(pub_year_cleaned) - as.integer(str_sub(fy_college, start = 1, end = 4)) == 1 ~ 'GOOD',
-    year(pub_year_cleaned) - as.integer(str_sub(fy_college, start = 1, end = 4)) != 1|0 ~ 'BAD',
-    TRUE ~ 'SOMETHING ELSE'
-  )
-  )
+# research_output_debug <- left_join(research_output_counts, research_outputs, by = "asset_id") %>% 
+#   select(asset_id,
+#          fy_college,
+#          pub_year_cleaned,
+#          unit_affiliations,
+#          count_unique_affiliations,
+#          output_effort_units,
+#          effort_per_affiliation) %>% 
+#   mutate(
+#     effort_match = case_when(
+#       output_effort_units == effort_per_affiliation ~ 'GOOD',
+#       output_effort_units != effort_per_affiliation ~ 'BAD',
+#       TRUE ~ NA
+#     ),
+#     
+#     affiliations_match = case_when(
+#       sapply(unit_affiliations, length) == count_unique_affiliations ~ 'GOOD',
+#       sapply(unit_affiliations, length) != count_unique_affiliations ~ 'BAD',
+#       TRUE ~ NA
+#       ),
+#     
+#     fy_date_match = case_when(
+#     as.integer(str_sub(fy_college, start = 1, end = 4)) == year(pub_year_cleaned) ~ 'GOOD',
+#     year(pub_year_cleaned) - as.integer(str_sub(fy_college, start = 1, end = 4)) == 1 ~ 'GOOD',
+#     year(pub_year_cleaned) - as.integer(str_sub(fy_college, start = 1, end = 4)) != 1|0 ~ 'BAD',
+#     TRUE ~ NA
+#   )
+#   )
+
+# view(filter(research_output_debug, effort_match == "BAD" | affiliations_match == "BAD" | fy_college == "BAD"))
 
 ### sum efforts based on fy & coll id's ####
+research_output_counts <- research_output_counts %>% 
+  group_by(fy_college) %>% 
+  summarize(total_outputs = sum(output_effort_units, na.rm = TRUE))
 
 # sum enrollment numbers ####
 spring_enrollment_sums <- spring_enrollment %>% 
@@ -210,3 +221,64 @@ spring_enrollment_sums <- spring_enrollment %>%
 fall_enrollment_sums <- fall_enrollment %>% 
   group_by(term, college) %>% 
   summarize(total_enrollment = sum(enrollment, na.rm = TRUE))
+
+# generate remaining fy & college ID's ####
+## enrollment ####
+print(unique(fall_enrollment_sums$college))
+fall_enrollment_sums <- fall_enrollment_sums %>% 
+  mutate(fy_college = case_when(
+      str_detect(college, "Agricultural & Life Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'cals'),
+      str_detect(college, "Art & Architecture") ~ paste0(str_sub(term, start = -4, end = -1),'caa'),
+      str_detect(college, "Business & Economics") ~ paste0(str_sub(term, start = -4, end = -1),'cbe'),
+      str_detect(college, "Education, Health & Human Sci|WWAMI") ~ paste0(str_sub(term, start = -4, end = -1),'cehhs'),
+      str_detect(college, "Engineering") ~ paste0(str_sub(term, start = -4, end = -1),'coe'),
+      str_detect(college, "Letters Arts & Social Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'class'),
+      str_detect(college, "Law") ~ paste0(str_sub(term, start = -4, end = -1),'law'),
+      str_detect(college, "Natural Resources") ~ paste0(str_sub(term, start = -4, end = -1),'cnr'),
+      str_detect(college, "^Science$") ~ paste0(str_sub(term, start = -4, end = -1),'cos'),
+      TRUE ~ NA
+    )
+  )
+
+
+print(unique(spring_enrollment_sums$college))
+spring_enrollment_sums <- spring_enrollment_sums %>% 
+  mutate(fy_college = case_when(
+    str_detect(college, "Agricultural & Life Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'cals'),
+    str_detect(college, "Art & Architecture") ~ paste0(str_sub(term, start = -4, end = -1),'caa'),
+    str_detect(college, "Business & Economics") ~ paste0(str_sub(term, start = -4, end = -1),'cbe'),
+    str_detect(college, "Education, Health & Human Sci|WWAMI") ~ paste0(str_sub(term, start = -4, end = -1),'cehhs'),
+    str_detect(college, "Engineering") ~ paste0(str_sub(term, start = -4, end = -1),'coe'),
+    str_detect(college, "Letters Arts & Social Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'class'),
+    str_detect(college, "Law") ~ paste0(str_sub(term, start = -4, end = -1),'law'),
+    str_detect(college, "Natural Resources") ~ paste0(str_sub(term, start = -4, end = -1),'cnr'),
+    str_detect(college, "^Science$") ~ paste0(str_sub(term, start = -4, end = -1),'cos'),
+    TRUE ~ NA
+  )
+  )
+
+# debug
+# view(filter(spring_enrollment_sums, is.na(fy_college)))
+# view(filter(fall_enrollment_sums, is.na(fy_college)))
+
+## grant funding ####
+# unique_funding_recipients <- data.frame(
+#   recipients = sort(unique(grant_funding$college),decreasing = FALSE, na.last = TRUE))
+# View(unique_funding_recipients)
+
+grant_funding <- grant_funding %>% 
+  mutate(fy_college = case_when(
+    str_detect(college, regex("Agricultural &|and Life Sciences", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cals'),
+    str_detect(college, regex("Letters, Arts &|and Social Sciences", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'class'),
+    str_detect(college, regex("Art &|and Architecture", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'caa'),
+    str_detect(college, regex("Business &|and Economics", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cbe'),
+    str_detect(college, regex("Education|WWAMI|Health", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cehhs'),
+    str_detect(college, regex("Engineering", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'coe'),
+    str_detect(college, regex("law", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'law'),
+    str_detect(college, regex("Natural Resources", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cnr'),
+    str_detect(college, regex("College of Science", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cos'),
+    TRUE ~ NA
+  ))
+
+#debug
+# view(filter(grant_funding, is.na(fy_college)))
