@@ -5,10 +5,11 @@ library(readxl)
 library(cli)
 library(lubridate)
 library(stringr)
+library(uuid)
 
 # load raw data ####
 az_database_list <- read.csv('raw_data/az_database_list.csv')
-platform_usage <- read.csv('raw_data/platform-usage_by_fy-and-platform.csv')
+az_database_usage <- read.csv('raw_data/database_usage_by_month.csv')
 research_outputs <- read.csv('raw_data/research-outputs-by-ay-and-college.csv')
 
 spring_enrollment <- read_xlsx('raw_data/spring-enrollment_by_college-major-and-semester.xlsx')
@@ -73,24 +74,18 @@ spring_enrollment <- select(spring_enrollment,
 
 grant_funding <- select(grant_funding,
                         fiscal_year = "fiscal-year",
-                        "college",
+                        college,
                         grant_proposals = "Number of proposals",
                         grant_funding = "research expenditures")
 
-platform_usage <- select(platform_usage,
-                         fiscal_year = "Usage.Date.Fiscal.Year",
-                         platform = "Normalized.Platform",
-                         usage = "Usage.Measures.Total",
-                         unique_titles = "Title.Identifier.Count")
-
 ## concatenate "organization.parent.unit.name" columns and drop them in addition to removing/renaming ####
-print(unique(unlist(research_outputs[9:16])))
+# print(unique(unlist(research_outputs[9:16])))
 
 research_outputs <- research_outputs %>%
   mutate(unit_affiliations =
            lapply(1:nrow(research_outputs), function(i){
              row <- research_outputs[i, 9:16] # should find some way to avoid hardcoding these in the future
-             unique(row[row != ""]) # didn't see any empty strings in there but just in case.
+             unique(row[row != ""])
              })
          ) %>% 
   select(asset_id = "Asset.Id",
@@ -156,8 +151,8 @@ research_output_counts <- data.frame(
   fy_college = 
     unlist( # need to lapply and unlist rather than something else b/c unit affiliations can be a length>2 vector, so the paste0 and lapply combo creates nested lists.
       lapply(1:nrow(research_outputs), function(i){
-        paste0(research_outputs$fiscal_year[i], # really gotta nail down the difference between single and double brackets; never really sure which one to use.
-               research_outputs$unit_affiliations[[i]])
+        paste0(research_outputs$fiscal_year[i], # I got it! Single brackets return a subset of the element, double-brackets extract a value based on the index number provided. Single brackets look like they operate similarly to double-brackets in things like lapply because you are generally subsetting based on individual index values, which looks like extraction.
+               research_outputs$unit_affiliations[[i]]) # another thing that sometimes confuses you about subsetting is lapply's and the like already iterate through the lists! you don't have to tell them how to do that by subsetting or extracting from the object you're already iterating over
     })
       ),
   
@@ -177,6 +172,8 @@ research_output_counts <- data.frame(
   )
 
 # debug
+# print(table(research_output_counts$fy_college)[table(research_output_counts$fy_college) > 1])
+
 # research_output_debug <- left_join(research_output_counts, research_outputs, by = "asset_id") %>% 
 #   select(asset_id,
 #          fy_college,
@@ -224,7 +221,7 @@ fall_enrollment_sums <- fall_enrollment %>%
 
 # generate remaining fy & college ID's ####
 ## enrollment ####
-print(unique(fall_enrollment_sums$college))
+# print(unique(fall_enrollment_sums$college))
 fall_enrollment_sums <- fall_enrollment_sums %>% 
   mutate(fy_college = case_when(
       str_detect(college, "Agricultural & Life Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'cals'),
@@ -238,28 +235,34 @@ fall_enrollment_sums <- fall_enrollment_sums %>%
       str_detect(college, "^Science$") ~ paste0(str_sub(term, start = -4, end = -1),'cos'),
       TRUE ~ NA
     )
-  )
+  ) %>% 
+  group_by(fy_college) %>% 
+  summarize(total_enrollment = sum(total_enrollment, na.rm =  TRUE))
 
 
-print(unique(spring_enrollment_sums$college))
+# print(unique(spring_enrollment_sums$college))
 spring_enrollment_sums <- spring_enrollment_sums %>% 
   mutate(fy_college = case_when(
-    str_detect(college, "Agricultural & Life Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'cals'),
-    str_detect(college, "Art & Architecture") ~ paste0(str_sub(term, start = -4, end = -1),'caa'),
-    str_detect(college, "Business & Economics") ~ paste0(str_sub(term, start = -4, end = -1),'cbe'),
-    str_detect(college, "Education, Health & Human Sci|WWAMI") ~ paste0(str_sub(term, start = -4, end = -1),'cehhs'),
-    str_detect(college, "Engineering") ~ paste0(str_sub(term, start = -4, end = -1),'coe'),
-    str_detect(college, "Letters Arts & Social Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'class'),
-    str_detect(college, "Law") ~ paste0(str_sub(term, start = -4, end = -1),'law'),
-    str_detect(college, "Natural Resources") ~ paste0(str_sub(term, start = -4, end = -1),'cnr'),
-    str_detect(college, "^Science$") ~ paste0(str_sub(term, start = -4, end = -1),'cos'),
+    str_detect(college, "Agricultural & Life Sciences") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cals'),
+    str_detect(college, "Art & Architecture") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'caa'),
+    str_detect(college, "Business & Economics") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cbe'),
+    str_detect(college, "Education, Health & Human Sci|WWAMI") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cehhs'),
+    str_detect(college, "Engineering") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'coe'),
+    str_detect(college, "Letters Arts & Social Sciences") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'class'),
+    str_detect(college, "Law") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'law'),
+    str_detect(college, "Natural Resources") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cnr'),
+    str_detect(college, "^Science$") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cos'),
     TRUE ~ NA
   )
-  )
+  ) %>% 
+  group_by(fy_college) %>% 
+  summarize(total_enrollment = sum(total_enrollment, na.rm =  TRUE))
 
 # debug
 # view(filter(spring_enrollment_sums, is.na(fy_college)))
 # view(filter(fall_enrollment_sums, is.na(fy_college)))
+# print(table(spring_enrollment_sums$fy_college)[table(spring_enrollment_sums$fy_college) > 1])
+# print(table(fall_enrollment_sums$fy_college)[table(fall_enrollment_sums$fy_college) > 1])
 
 ## grant funding ####
 # unique_funding_recipients <- data.frame(
@@ -278,7 +281,148 @@ grant_funding <- grant_funding %>%
     str_detect(college, regex("Natural Resources", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cnr'),
     str_detect(college, regex("College of Science", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cos'),
     TRUE ~ NA
-  ))
+  )) %>% group_by(fy_college) %>% 
+  summarize(grant_funding = sum(grant_funding, na.rm =  TRUE),
+            grant_proposals = sum(as.integer(grant_proposals), na.rm = TRUE)) %>%
+  na.omit(fy_college)
 
 #debug
 # view(filter(grant_funding, is.na(fy_college)))
+# print(table(grant_funding$fy_college)[table(grant_funding$fy_college) > 1])
+
+# pre-process database usage statistics ####
+database_stats <- left_join(az_database_usage, az_database_list, by = join_by(ID == id))
+
+database_stats <- database_stats %>% # the mutate below is my great, poorly automated shame, don't look at it.
+  mutate(total_views_fy15 = rowSums(database_stats[,12:23]),
+         total_views_fy16 = rowSums(database_stats[,24:35]),
+         total_views_fy17 = rowSums(database_stats[,36:47]),
+         total_views_fy18 = rowSums(database_stats[,48:59]),
+         total_views_fy19 = rowSums(database_stats[,60:71]),
+         total_views_fy20 = rowSums(database_stats[,72:83]),
+         total_views_fy21 = rowSums(database_stats[,84:95]),
+         total_views_fy22 = rowSums(database_stats[,96:107]),
+         total_views_fy23 = rowSums(database_stats[,108:119]),
+         remaining_views = rowSums(database_stats[,c(5:11,120:125)]),
+         ) %>% 
+  select(
+    id = "ID",
+    database_name = "Name",
+    subjects,
+    total_views = "Total",
+    total_views_fy15,
+    total_views_fy16,
+    total_views_fy17,
+    total_views_fy18,
+    total_views_fy19,
+    total_views_fy20,
+    total_views_fy21,
+    total_views_fy22,
+    total_views_fy23,
+    # remaining_views,
+  )
+# debug
+# database_stats <- database_stats %>% 
+#   mutate(math_check = rowSums(database_stats[,5:14]) == total_views) %>% 
+#   filter(math_check == FALSE)
+
+database_stats <- database_stats %>% 
+  mutate(relevant_colleges = lapply(1:nrow(database_stats), function(i){
+    college_list = c(
+      case_when(str_detect(subjects[i], regex("Business|Economics", ignore_case = TRUE)) ~ "cbe"),
+      case_when(str_detect(subjects[i], regex("Computing|Electronics|Engineering|Chemistry|environmental", ignore_case = TRUE)) ~ "coe"),
+      case_when(str_detect(subjects[i], regex("Education|Health|Medicine|curriculum", ignore_case = TRUE)) ~ "cehhs"),
+      case_when(str_detect(subjects[i], regex("history|philosophy|religious|literature|anthropology|sociology|political|psychology|international|language", ignore_case = TRUE)) ~ "class"),
+      case_when(str_detect(subjects[i], regex("architecture|music|literature", ignore_case = TRUE)) ~ "caa"),
+      case_when(str_detect(subjects[i], regex("agricultural|family|geospatial|veterinary", ignore_case = TRUE)) ~ "cals"),
+      case_when(str_detect(subjects[i], regex("physics|earth|chemistry|biology|geography|geology|geospatial|mathematics", ignore_case = TRUE)) ~ "cos"),
+      case_when(str_detect(subjects[i], regex("geospatial|forestry|wildlife|fisheries|geography|environmental", ignore_case = TRUE)) ~ "cnr"),
+      case_when(str_detect(subjects[i], regex("law", ignore_case = TRUE)) ~ "law"))
+    
+      college_list <- college_list[!is.na(college_list)]
+  }
+  ), relevant_fycolls = lapply(1:length(relevant_colleges), function(x){
+    fiscal_year = c(2015:2022)
+    unlist(lapply(relevant_colleges[[x]], function(y) paste0(fiscal_year,y)))})) %>%
+  filter(database_name != "[Deleted]") %>%
+  filter(relevant_colleges != "character(0)") %>% 
+  select(-total_views_fy23) # only have grant funding data up to fy22
+  
+# probably not necessary
+# transposed_database_stats = pivot_longer(database_stats, cols = total_views_fy16:total_views_fy22) %>% 
+#   select(id,
+#          database_name,
+#          relevant_colleges,
+#          fiscal_year = "name",
+#          views = "value") %>% 
+#   mutate(fiscal_year = paste0("20",str_sub(fiscal_year, -2, -1)),
+#          fy_college = lapply(1:length(relevant_colleges), function(x){
+#            lapply(relevant_colleges[[x]], function(y) paste0(fiscal_year[[x]],y))
+#          }))
+
+# join university variable data together ####
+
+# check range of fy_college
+# print(sort(na.omit(spring_enrollment_sums$fy_college))[1])
+# print(sort(na.omit(spring_enrollment_sums$fy_college))[length(na.omit(spring_enrollment_sums$fy_college))])
+# print(sort(na.omit(fall_enrollment_sums$fy_college))[1])
+# print(sort(na.omit(fall_enrollment_sums$fy_college))[length(na.omit(fall_enrollment_sums$fy_college))])
+# print(sort(na.omit(research_output_counts$fy_college))[1])
+# print(sort(na.omit(research_output_counts$fy_college))[length(na.omit(research_output_counts$fy_college))])
+# print(sort(na.omit(grant_funding$fy_college))[1])
+# print(sort(na.omit(grant_funding$fy_college))[length(na.omit(grant_funding$fy_college))])
+
+university_variables <- full_join(spring_enrollment_sums, fall_enrollment_sums, by = "fy_college") %>%
+  full_join(research_output_counts, by = "fy_college") %>%
+  full_join(grant_funding, by = "fy_college") %>%
+  na.omit(fy_college) %>% 
+  mutate(total_enrollment = total_enrollment.x+total_enrollment.y) %>% 
+  select(-total_enrollment.x,
+         -total_enrollment.y)
+
+# create database - fycoll matches data frame ####
+database_fycoll_combos <- data.frame(
+  database_id = unlist(sapply(1:nrow(database_stats), function(i){
+    rep(database_stats$id[i], length(database_stats$relevant_fycolls[[i]]))
+  })),
+  relevant_fycolls = unlist(sapply(1:nrow(database_stats), function(i) database_stats$relevant_fycolls)),
+  combo_id = UUIDgenerate(n=length(database_fycoll_combos$relevant_fycolls), output = "string"))
+
+# store in a SQL database ####
+# predicting_resource_usage_db <- dbConnect(RSQLite:SQLite(), "../../processed_data/predicting_resource_usage.db")
+# dbExecute(predicting_resource_usage_db, "CREATE TABLE university_variables (
+#           fy_college varchar(9) NOT NULL,
+#           total_outputs float NOT NULL,
+#           grant_funding float NOT NULL,
+#           grant_proposals float NOT NULL,
+#           total_enrollment float NOT NULL,
+#           PRIMARY KEY (fy_college)
+#           );")
+# 
+# dbExecute(predicting_resource_usage_db, "CREATE TABLE resource_variables (
+#           database_id varchar(8) NOT NULL,
+#           database_name varchar(100) NOT NULL,
+#           database_subjects varchar(100),
+#           total_database_views float,
+#           views_fy15 float,
+#           views_fy16 float,
+#           views_fy17 float,
+#           views_fy18 float,
+#           views_fy19 float,
+#           views_fy20 float,
+#           views_fy21 float,
+#           views_fy22 float,
+#           relevant_colleges varchar(25) NOT NULL
+#           PRIMARY KEY (database_id)
+# );")
+# 
+# dbExecute(predicting_resource_usage_db, "CREATE TABLE database_fycoll_combos (
+#           combo_id INTEGER AUTOINREMENT,
+#           database_id varchar(8) NOT NULL,
+#           fy_college varchar(9) NOT NULL,
+#           PRIMARY KEY (combo_id),
+#           FOREIGN KEY (fy_college) REFERENCES university_variables(fy_college),
+#           FOREIGN KEY (database_id) REFERENCES resource_variables(database_id)
+# );")
+
+# dbWriteTable
