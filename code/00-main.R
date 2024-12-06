@@ -1,0 +1,6 @@
+source("code/01-load-packages-and-raw-data.R")
+source("code/02-trim-raw-data-dataframes.R")
+source("code/03-preprocess-raw-data.R")
+source("code/04-create-final-dataframes-for-processing.R")
+source("code/05-create-sql-database-and-write-processed-dataframes.R")
+source("code/06-create-visualizations.R")

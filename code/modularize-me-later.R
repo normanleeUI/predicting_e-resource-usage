@@ -6,6 +6,7 @@ library(cli)
 library(lubridate)
 library(stringr)
 library(uuid)
+library(ggplot2)
 
 # load raw data ####
 az_database_list <- read.csv('raw_data/az_database_list.csv')
@@ -457,3 +458,4 @@ fromsql_univ_vars <- dbGetQuery(predicting_resource_usage_db, "SELECT * FROM uni
 fromsql_resource_vars <- dbGetQuery(predicting_resource_usage_db, "SELECT * FROM resource_variables;")
 fromsql_combos <- dbGetQuery(predicting_resource_usage_db, "SELECT * FROM database_fycoll_combos;")
 
+# visualize ####

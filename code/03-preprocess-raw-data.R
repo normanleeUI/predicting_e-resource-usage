@@ -1,30 +1,20 @@
 # research outputs ####
 
 # concatenate "organization.parent.unit.name" columns; rename and remove columns as necessary
-
-# print(unique(unlist(research_outputs[9:16])))
+# print(unique(unlist(research_outputs[9:16]))) # used to determine whether columns contained "", NA's, NULLs, or other values
+# print(unique(research_outputs$pub_year)) # get a sense of different date formats in the dataframe
 research_outputs <- research_outputs %>%
   mutate(unit_affiliations =
            lapply(1:nrow(research_outputs), function(i){
-             row <- research_outputs[i, 9:16]
-             unique(row[row != ""])
+             unique(research_outputs[i, 9:16][research_outputs[i, 9:16] != ""]) # != condition based on print statement above
            })
   ) %>% 
   select(asset_id = "Asset.Id",
          pub_year = "Asset.Published.Date..String.",
          type = "Asset.Type",
-         unit_affiliations)
-###
-# debug
-# print(unique(unlist(research_outputs$unit_affiliations)))
-###
-
-# clean pub year column; identify rows where fiscal year needs to be simulated
-
-# print(unique(research_outputs$pub_year))
-research_outputs <- research_outputs %>% 
-  mutate(
-    pub_year_cleaned = case_when(
+         unit_affiliations) %>% 
+  mutate( # clean pub year column; identify rows where fiscal year needs to be simulated
+    pub_year_cleaned = case_when( # use regex to parse different date formats into lubridate friendly strings
       str_detect(pub_year, "^\\d{4}$") ~ mdy(paste0('01/01/',pub_year)),
       str_detect(pub_year, "^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/(\\d{4}$)") ~ dmy(pub_year),
       str_detect(pub_year, "^([1-9]|1[12])/([1-9]|[12][0-9]|3[01])/(19|20)\\d{2}$") ~ mdy(pub_year),
@@ -41,43 +31,41 @@ research_outputs <- research_outputs %>%
       TRUE ~ as_date(pub_year)
     ),
     
-    needs_fy_sim = case_when(
+    needs_fy_sim = case_when( # for publications where only "YYYY" dates are provided there isn't enough info to determine fy, so must be simulated
       str_detect(pub_year, "^\\d{4}$") ~ TRUE,
       str_detect(pub_year, "^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/(\\d{4}$)") ~ FALSE,
       str_detect(pub_year, "^([1-9]|1[12])/([1-9]|[12][0-9]|3[01])/(19|20)\\d{2}$") ~ FALSE,
       str_detect(pub_year, "^\\d{1,2}-[a-zA-Z]{3}$") ~ FALSE,
       str_detect(pub_year, "^[a-zA-Z]{3}-\\d{1,2}$") ~ FALSE
     )
-  )
+  ) %>% 
+  mutate(  # assign fiscal years; randomly generate if necessary; remove entries without a date
+    random_number = runif(n()), # generate a column of random numbers
+    fiscal_year = case_when(
+      needs_fy_sim == TRUE & random_number < 0.5 ~ as.integer(year(pub_year_cleaned)), # randomly generate a fiscal year based on whether a randomly generated number is above or below 0.5
+      needs_fy_sim == TRUE & random_number >= 0.5 ~ as.integer(year(pub_year_cleaned))-1,
+      needs_fy_sim == FALSE & month(pub_year_cleaned) >= 7 ~ as.integer(year(pub_year_cleaned)), # else, just extract month from lubridate dates, using a July - June fiscal year
+      needs_fy_sim == FALSE & month(pub_year_cleaned) < 7 ~ as.integer(year(pub_year_cleaned))-1
+    )) %>% 
+  mutate( # don't want to double-count publications if the have multiple academic units associated with them, so divide the "effort" of each publication between the units that produced it
+    count_unique_affiliations = sapply(unit_affiliations, function(i) length(i)),
+    effort_per_affiliation = 1/count_unique_affiliations) %>% 
+  na.omit(pub_year_cleaned) %>% # remove research outputs without dates
+  select(-random_number, # remove columns that are no longer necessary
+         -pub_year,
+         -needs_fy_sim)
 
 ###
 # debug
+# print(unique(unlist(research_outputs$unit_affiliations)))
 ###
 
-# assign fiscal years; randomly generate if necessary; remove entries without a date
-research_outputs <- research_outputs %>% 
-  mutate(
-    random_number = runif(n()), # need to declare this as an intermediate variable beforehand because otherwise if you generate a number >0.5 in the <0.5 case you get an N/A and vice versa.
-    fiscal_year = case_when(
-      needs_fy_sim == TRUE & random_number < 0.5 ~ as.integer(year(pub_year_cleaned)),
-      needs_fy_sim == TRUE & random_number >= 0.5 ~ as.integer(year(pub_year_cleaned))-1,
-      needs_fy_sim == FALSE & month(pub_year_cleaned) >= 7 ~ as.integer(year(pub_year_cleaned)),
-      needs_fy_sim == FALSE & month(pub_year_cleaned) < 7 ~ as.integer(year(pub_year_cleaned))-1
-    )) %>% 
-  na.omit(research_outputs$pub_year_cleaned)
-
-# add a modifier that divides the "effort" of the publication by the number of unique academic units
-research_outputs <- research_outputs %>%
-  mutate(
-    count_unique_affiliations = sapply(research_outputs$unit_affiliations, function(i) length(i)),
-    effort_per_affiliation = 1/count_unique_affiliations)
-
-# create dataframe to count research outputs by academic unit and fiscal year
+# create dataframe to count research output "effort" by academic unit and fiscal year
 research_output_counts <- data.frame(
   fy_college = 
     unlist( 
       lapply(1:nrow(research_outputs), function(i){
-        paste0(research_outputs$fiscal_year[i], 
+        paste0(research_outputs$fiscal_year[[i]], 
                research_outputs$unit_affiliations[[i]])
       })
     ),
@@ -85,27 +73,28 @@ research_output_counts <- data.frame(
   output_effort_units = 
     unlist(
       sapply(1:nrow(research_outputs), function(i){
-        rep(research_outputs$effort_per_affiliation[i], length(research_outputs$unit_affiliations[[i]]))
+        rep(research_outputs$effort_per_affiliation[[i]], length(research_outputs$unit_affiliations[[i]])) # since an fy_college value is created for each of the units affiliated with a single research output, we have to ascribe the research output's "effort" value as many times as there are academic units
       })
     ),
   
   asset_id =
     unlist(
       sapply(1:nrow(research_outputs), function(i){
-        rep(research_outputs$asset_id[i], length(research_outputs$unit_affiliations[[i]]))
+        rep(research_outputs$asset_id[[i]], length(research_outputs$unit_affiliations[[i]]))
       })
     )
-)
+) %>% 
+  group_by(fy_college) %>% 
+  summarize(total_outputs = sum(output_effort_units, na.rm = TRUE)) # sum efforts based on fy & coll id's
 
 ###
-# debug
+# debug - performed before final summing
 # print(table(research_output_counts$fy_college)[table(research_output_counts$fy_college) > 1])
 # research_output_debug <- left_join(research_output_counts, research_outputs, by = "asset_id") %>% 
 #   select(asset_id,
 #          fy_college,
 #          pub_year_cleaned,
 #          unit_affiliations,
-#          count_unique_affiliations,
 #          output_effort_units,
 #          effort_per_affiliation) %>% 
 #   mutate(
@@ -114,13 +103,6 @@ research_output_counts <- data.frame(
 #       output_effort_units != effort_per_affiliation ~ 'BAD',
 #       TRUE ~ NA
 #     ),
-#     
-#     affiliations_match = case_when(
-#       sapply(unit_affiliations, length) == count_unique_affiliations ~ 'GOOD',
-#       sapply(unit_affiliations, length) != count_unique_affiliations ~ 'BAD',
-#       TRUE ~ NA
-#       ),
-#     
 #     fy_date_match = case_when(
 #     as.integer(str_sub(fy_college, start = 1, end = 4)) == year(pub_year_cleaned) ~ 'GOOD',
 #     year(pub_year_cleaned) - as.integer(str_sub(fy_college, start = 1, end = 4)) == 1 ~ 'GOOD',
@@ -132,25 +114,11 @@ research_output_counts <- data.frame(
 # view(filter(research_output_debug, effort_match == "BAD" | affiliations_match == "BAD" | fy_college == "BAD"))
 ###
 
-# sum efforts based on fy & coll id's
-research_output_counts <- research_output_counts %>% 
-  group_by(fy_college) %>% 
-  summarize(total_outputs = sum(output_effort_units, na.rm = TRUE))
-
 # enrollment numbers ####
-# generate data frames that sum enrollment numbers for each college
-spring_enrollment_sums <- spring_enrollment %>% 
-  group_by(term, college) %>% 
-  summarize(total_enrollment = sum(enrollment, na.rm = TRUE))
+# generate fy and college values and modify data frames so they sum enrollments for each college and fiscal year
 
-fall_enrollment_sums <- fall_enrollment %>% 
-  group_by(term, college) %>% 
-  summarize(total_enrollment = sum(enrollment, na.rm = TRUE))
-
-# generate remaining fy & college ID's ####
-
-# print(unique(fall_enrollment_sums$college))
-fall_enrollment_sums <- fall_enrollment_sums %>% 
+# print(unique(fall_enrollment$college)) # check to make sure college names are consistent
+fall_enrollment <- fall_enrollment %>%  
   mutate(fy_college = case_when(
     str_detect(college, "Agricultural & Life Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'cals'),
     str_detect(college, "Art & Architecture") ~ paste0(str_sub(term, start = -4, end = -1),'caa'),
@@ -164,43 +132,44 @@ fall_enrollment_sums <- fall_enrollment_sums %>%
     TRUE ~ NA
   )
   ) %>% 
-  group_by(fy_college) %>% 
-  summarize(total_enrollment = sum(total_enrollment, na.rm =  TRUE))
+  group_by(fy_college) %>%
+  summarize(enrollment = sum(enrollment, na.rm =  TRUE)) # generate data frame that sums enrollment numbers
 
-# print(unique(spring_enrollment_sums$college))
-spring_enrollment_sums <- spring_enrollment_sums %>% 
+# print(unique(spring_enrollment$college))
+spring_enrollment <- spring_enrollment %>%  
   mutate(fy_college = case_when(
-    str_detect(college, "Agricultural & Life Sciences") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cals'),
-    str_detect(college, "Art & Architecture") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'caa'),
-    str_detect(college, "Business & Economics") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cbe'),
-    str_detect(college, "Education, Health & Human Sci|WWAMI") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cehhs'),
-    str_detect(college, "Engineering") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'coe'),
-    str_detect(college, "Letters Arts & Social Sciences") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'class'),
-    str_detect(college, "Law") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'law'),
-    str_detect(college, "Natural Resources") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cnr'),
-    str_detect(college, "^Science$") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cos'),
+    str_detect(college, "Agricultural & Life Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'cals'),
+    str_detect(college, "Art & Architecture") ~ paste0(str_sub(term, start = -4, end = -1),'caa'),
+    str_detect(college, "Business & Economics") ~ paste0(str_sub(term, start = -4, end = -1),'cbe'),
+    str_detect(college, "Education, Health & Human Sci|WWAMI") ~ paste0(str_sub(term, start = -4, end = -1),'cehhs'),
+    str_detect(college, "Engineering") ~ paste0(str_sub(term, start = -4, end = -1),'coe'),
+    str_detect(college, "Letters Arts & Social Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'class'),
+    str_detect(college, "Law") ~ paste0(str_sub(term, start = -4, end = -1),'law'),
+    str_detect(college, "Natural Resources") ~ paste0(str_sub(term, start = -4, end = -1),'cnr'),
+    str_detect(college, "^Science$") ~ paste0(str_sub(term, start = -4, end = -1),'cos'),
     TRUE ~ NA
   )
   ) %>% 
-  group_by(fy_college) %>% 
-  summarize(total_enrollment = sum(total_enrollment, na.rm =  TRUE))
+  group_by(fy_college) %>%
+  summarize(enrollment = sum(enrollment, na.rm =  TRUE)) # generate data frame that sums enrollment numbers
 
 ###
 # debug
-# view(filter(spring_enrollment_sums, is.na(fy_college)))
-# view(filter(fall_enrollment_sums, is.na(fy_college)))
-# print(table(spring_enrollment_sums$fy_college)[table(spring_enrollment_sums$fy_college) > 1])
-# print(table(fall_enrollment_sums$fy_college)[table(fall_enrollment_sums$fy_college) > 1])
+# view(filter(spring_enrollment, is.na(fy_college)))
+# view(filter(fall_enrollment, is.na(fy_college)))
+# print(table(spring_enrollment$fy_college)[table(spring_enrollment$fy_college) > 1])
+# print(table(fall_enrollment$fy_college)[table(fall_enrollment$fy_college) > 1])
 ###
 
+# check to see if funding recipient names are consistent
 # unique_funding_recipients <- data.frame(
 #   recipients = sort(unique(grant_funding$college),decreasing = FALSE, na.last = TRUE))
 # View(unique_funding_recipients)
 
-grant_funding <- grant_funding %>% 
+grant_funding <- grant_funding %>% # generate fiscal year and college id's, sum funding and grant proposals, omit units other than the ones we intend to track
   mutate(fy_college = case_when(
     str_detect(college, regex("Agricultural &|and Life Sciences", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cals'),
-    str_detect(college, regex("Letters, Arts &|and Social Sciences", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'class'),
+    str_detect(college, regex("Letters, Arts &|and Social Sci", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'class'),
     str_detect(college, regex("Art &|and Architecture", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'caa'),
     str_detect(college, regex("Business &|and Economics", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cbe'),
     str_detect(college, regex("Education|WWAMI|Health", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cehhs'),
