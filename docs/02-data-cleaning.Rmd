@@ -1,0 +1,357 @@
+---
+title: "Cleaning the Data"
+author: "Norm Lee"
+date: "2024-12-06"
+output: html_document
+---
+
+## Importing packages & data
+
+First, we import a number of packages with convenient functions:
+
+```{r load_package, eval=FALSE}
+
+library(tidyverse) # helps data processing
+library(DBI) # allow sql operations in R
+library(readxl) # allow creation of data.frame from xlsx
+library(cli) # color console outputs for easy reading
+library(lubridate) # helps date processing
+library(stringr) # help string/substring processing
+library(uuid) # generate unique identifiers
+library(ggplot2) # generate visualizations
+library(viridis) # color visualizations
+```
+
+Then we import the data:
+
+```{r load_data, eval=FALSE}
+# library database usage
+az_database_list <- read.csv('raw_data/az_database_list.csv')
+az_database_usage <- read.csv('raw_data/database_usage_by_month.csv')
+
+# U of I research outputs from VERSO
+research_outputs <- read.csv('raw_data/research-outputs-by-ay-and-college.csv')
+
+# Enrollment numbers from RI dashboards
+spring_enrollment <- read_xlsx('raw_data/spring-enrollment_by_college-major-and-semester.xlsx')
+fall_enrollment <- read_xlsx('raw_data/fall-enrollment_by_college-major-and-semester.xlsx')
+
+# Grant expenditures from research report archives
+grant_funding <- read_xlsx('raw_data/funding-reports-combined_by_college-and-fy.xlsx')
+```
+
+## Exploring the data
+
+Since the data is raw and messy the first thing we want to do is get a sense of the columns and data types in our new data.frames.
+
+```{r view-colname-and-data-type, eval=FALSE}
+
+View(az_database_list) # view data.frame
+for (i in colnames(az_database_list)){ # get list of columns and their data types.
+  cat(col_blue(i), ': ', col_red(az_database_list[[i]]), "\n") # color-code the output for easy reading
+}
+
+View(az_database_usage)
+for (i in colnames(az_database_usage)){
+  cat(col_blue(i), ': ', col_red(az_database_usage[[i]]), "\n")
+}
+
+View(fall_enrollment)
+for (i in colnames(fall_enrollment)){
+  cat(col_blue(i), ': ', col_red(fall_enrollment[[i]]), "\n")
+}
+
+View(spring_enrollment)
+for (i in colnames(spring_enrollment)){
+  cat(col_blue(i), ': ', col_red(spring_enrollment[[i]]), "\n")
+}
+
+View(grant_funding)
+for (i in colnames(grant_funding)){
+  cat(col_blue(i), ': ', col_red(grant_funding[[i]]), "\n")
+}
+
+View(research_outputs)
+for (i in colnames(research_outputs)){
+  cat(col_blue(i), ': ', col_red(research_outputs[[i]]), "\n")
+}
+```
+
+Technically, this didn't need to be a `for loop`. But, as a Python native, at this point in the project I wasn't used to R's innate vectorization and the apply family functions. Now I leave them in to remember my roots and where I come from. :D
+
+## Data cleaning
+
+With that done, we can start the data cleaning. First, by removing columns we obviously do not need and re-naming the ones we do to avoid issues with special characters in the future:
+
+```{r remove-unnecessary-columns, eval=FALSE}
+
+az_database_list <- select(az_database_list,
+                           id = "ID",
+                           name = "Name",
+                           description = "Description",
+                           date_created = "Created",
+                           vendor = "Vendor",
+                           subjects = "Subjects")
+
+fall_enrollment <- select(fall_enrollment,
+                          college = "College",
+                          term = "Term Description",
+                          enrollment = "Count (Data suppression) 1")
+
+spring_enrollment <- select(spring_enrollment,
+                            college = "College",
+                            term = "Term Description",
+                            enrollment = "Count (Data suppression) 1")
+
+grant_funding <- select(grant_funding,
+                        fiscal_year = "fiscal-year",
+                        college,
+                        grant_proposals = "Number of proposals",
+                        grant_funding = "research expenditures")
+```
+
+From there, we can begin cleaning the data sources one by one. The processing for each of these was done in one big pipe chain, but to make it more readable, I've broken it into discrete chunks.
+
+### Research outputs
+
+The ultimate goal for this data.frame is to have a data.frame that counts the number of publications each college published each fiscal year. So, our observational unit "Fiscal Year + College". E.g., "The College of Engineering produced X publications in fiscal year 2020".
+
+> **This was my first mistake with tidiness! Technically, concatenating fiscal year and college into one column is untidy. However, as we'll see during the "visualization" section, this error does not actually make processing the data much more difficult.**
+
+Within the research outputs data.frame, each research asset is affiliated with one or more colleges based on the affiliations of the author(s). Unfortunately, each affiliation is listed in its own column. Based on looking at the data.frame colnames, we can tell assets have between 1 and 7 columns dedicated to their affiliations. We need to collapse those into one column that contains a vector of affiliations:
+
+```{r concatenate-affiliations, eval=FALSE}
+
+print(unique(unlist(research_outputs[9:16]))) # used to determine whether empty cells contained "", NA's, NULLs, or other values
+
+research_outputs <- research_outputs %>%
+  mutate(unit_affiliations =
+           lapply(1:nrow(research_outputs), function(i){
+             unique(research_outputs[i, 9:16][research_outputs[i, 9:16] != ""]) # != condition based on print statement above
+           })
+  ) %>% 
+  select(asset_id = "Asset.Id",
+         pub_year = "Asset.Published.Date..String.",
+         type = "Asset.Type",
+         unit_affiliations) # remove the 7 columns that were previously dedicated to asset affiliations
+
+###
+# debug
+print(unique(unlist(research_outputs$unit_affiliations))) # check to make sure all expected Colleges are somewhere in the new unit affiliations column
+###
+```
+
+Next, we need to determine which fiscal year the assets were published in because many university level variables are reported based on fiscal year and we want the asset data to mesh with that.
+
+To do so, we need to clean the "pub_year" column, where dates are stored in a variety of formats. Huge thanks to <https://regex101.com/> and <https://regex-generator.olafneumann.org/> for helping me create and debug the regular expressions that uniquely pick out the date formats seen in the data.frame!
+
+```{r clean-pub-year, eval=FALSE}
+%>% 
+  mutate(
+    pub_year_cleaned = case_when( # use regex to parse different date formats into lubridate friendly strings
+      str_detect(pub_year, "^\\d{4}$") ~ mdy(paste0('01/01/',pub_year)),
+      str_detect(pub_year, "^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/(\\d{4}$)") ~ dmy(pub_year),
+      str_detect(pub_year, "^([1-9]|1[12])/([1-9]|[12][0-9]|3[01])/(19|20)\\d{2}$") ~ mdy(pub_year),
+      str_detect(pub_year, "^\\d{1,2}-[a-zA-Z]{3}$") ~ ymd(
+        paste0(
+          str_replace(str_extract(pub_year, "\\d{1,2}"),
+                      "\\d{1,2}",
+                      paste0('20',str_extract(pub_year, "\\d{1,2}"),'-',str_extract(pub_year, '[a-zA-Z]{3}'),'-','01')))),
+      str_detect(pub_year, "^[a-zA-Z]{3}-\\d{1,2}$") ~ ymd(
+        paste0(
+          str_replace(str_extract(pub_year, "\\d{1,2}"),
+                      "\\d{1,2}",
+                      paste0('20',str_extract(pub_year, "\\d{1,2}"),'-',str_extract(pub_year, '[a-zA-Z]{3}'),'-','01')))),
+      TRUE ~ as_date(pub_year)
+    ),
+    
+    needs_fy_sim = case_when( # dummy column. For publications where only "YYYY" dates are provided there isn't enough info to determine fy, so must be simulated
+      str_detect(pub_year, "^\\d{4}$") ~ TRUE,
+      str_detect(pub_year, "^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/(\\d{4}$)") ~ FALSE,
+      str_detect(pub_year, "^([1-9]|1[12])/([1-9]|[12][0-9]|3[01])/(19|20)\\d{2}$") ~ FALSE,
+      str_detect(pub_year, "^\\d{1,2}-[a-zA-Z]{3}$") ~ FALSE,
+      str_detect(pub_year, "^[a-zA-Z]{3}-\\d{1,2}$") ~ FALSE
+    )
+  ) %>% 
+  mutate(  # assign fiscal years; randomly generate if necessary; remove entries without a date
+    random_number = runif(n()), # generate a column of random numbers
+    fiscal_year = case_when(
+      needs_fy_sim == TRUE & random_number < 0.5 ~ as.integer(year(pub_year_cleaned)), # randomly generate a fiscal year based on whether a randomly generated number is above or below 0.5
+      needs_fy_sim == TRUE & random_number >= 0.5 ~ as.integer(year(pub_year_cleaned))-1,
+      needs_fy_sim == FALSE & month(pub_year_cleaned) >= 7 ~ as.integer(year(pub_year_cleaned)), # else, just extract month from lubridate dates, using a July - June fiscal year
+      needs_fy_sim == FALSE & month(pub_year_cleaned) < 7 ~ as.integer(year(pub_year_cleaned))-1
+    ))
+```
+
+Now, we run into an unavoidable limitation of the data. If an asset is affiliated with multiple colleges within a particular fiscal year, how do we count it? Does each College get the credit for one entire output, or something else?
+
+Recall that the idea behind this project is - eventually - we may want to investigate how University variables relate to Library database usage. Because of that, we're not actually interested in the research outputs themselves, they are just an imprecise proxy. Instead, we want some representation of the "effort" a researcher had to go through to publish that asset, "effort" which might have led them to access journal articles, conference papers, etc., through the Library's databases.
+
+Consequently, it didn't make much sense to simply assign each College one entire output, because presumably the "effort" of producing the asset is shared across authors. So, rather than assigning one asset per affiliated College, I assigned `1 / (number of units affiliated with the asset)`. So, if one professor from Engineering and one from Science co-authored a paper in 2014, each College gets 0.5 of an asset.
+
+Obviously, this `1 / (number of units affiliated with the asset)` is only slightly more nuanced than just assigning 1 to each College. However, implementing it as code at least makes the assumptions and causal story I'm telling explicit:
+
+```{r calc-asset-effort, eval=FALSE}
+%>% 
+  mutate(
+    count_unique_affiliations = sapply(unit_affiliations, function(i) length(i)),
+    effort_per_affiliation = 1/count_unique_affiliations)
+
+```
+
+Afterwards, there's just some clean-up:
+
+```{r remove-outputs-without-dates, eval=FALSE}
+%>% 
+  na.omit(pub_year_cleaned) %>% # remove research outputs without dates
+  select(-random_number, # remove columns that are no longer necessary
+         -pub_year,
+         -needs_fy_sim)
+```
+
+Now, we have a data.frame that lists every research asset, its fiscal year, and associated College(s) - where associated Colleges is a vector of length \>= 1. We just need to group by "College + Fiscal Year" and add up the assets.
+
+```{r create-research-output-counts-dataframe, eval=FALSE}
+
+research_output_counts <- data.frame(
+  fy_college = # create "College + Fiscal Year" ID values 
+    unlist( 
+      lapply(1:nrow(research_outputs), function(i){
+        paste0(research_outputs$fiscal_year[[i]], 
+               research_outputs$unit_affiliations[[i]])
+      })
+    ),
+  
+  output_effort_units = 
+    unlist(
+      sapply(1:nrow(research_outputs), function(i){
+        rep(research_outputs$effort_per_affiliation[[i]], length(research_outputs$unit_affiliations[[i]])) # since an fy_college value is created for each of the units affiliated with a single research output, we have to ascribe the research output's "effort" value as many times as there are academic units
+      })
+    ),
+  
+  asset_id =
+    unlist(
+      sapply(1:nrow(research_outputs), function(i){
+        rep(research_outputs$asset_id[[i]], length(research_outputs$unit_affiliations[[i]]))
+      })
+    )
+) 
+```
+
+Before we do the final summation, I also created a debugging data.frame to make sure the `sapply(...rep(...))` behavior worked as expected, transferring the proper data in the proper order from `research_outputs` to `research_output_counts`:
+
+```{r debug-research-asset-counts-dataframe, eval=FALSE}
+###
+# debug - performed before final summing
+
+research_output_debug <- left_join(research_output_counts, research_outputs, by = "asset_id") %>%
+   select(asset_id,
+          fy_college,
+          pub_year_cleaned,
+          unit_affiliations,
+          output_effort_units,
+          effort_per_affiliation) %>%
+   mutate(
+     effort_match = case_when(
+       output_effort_units == effort_per_affiliation ~ 'GOOD',
+       output_effort_units != effort_per_affiliation ~ 'BAD',
+       TRUE ~ NA
+     ),
+     fy_date_match = case_when(
+     as.integer(str_sub(fy_college, start = 1, end = 4)) == year(pub_year_cleaned) ~ 'GOOD', # for things published July - December
+     year(pub_year_cleaned) - as.integer(str_sub(fy_college, start = 1, end = 4)) == 1 ~ 'GOOD', # for things published January - June
+     year(pub_year_cleaned) - as.integer(str_sub(fy_college, start = 1, end = 4)) != 1|0 ~ 'BAD',
+     TRUE ~ NA
+   )
+   )
+
+ view(filter(research_output_debug, effort_match == "BAD" | affiliations_match == "BAD" | fy_college == "BAD"))
+###
+```
+
+Afterward, we can (finally!), group by fiscal year and college and sum:
+
+```{r sum-research-output-counts, eval=FALSE}
+%>% 
+  group_by(fy_college) %>% 
+  summarize(total_outputs = sum(output_effort_units, na.rm = TRUE))
+```
+
+## Enrollment Numbers
+
+Enrollment numbers is reported by term and department, so the ultimate goal is to sum department numbers into College numbers, convert term to fiscal year, and to create fiscal year + College identifiers.
+
+First, we take a look at the College names in the data.frame to check if they're consistent:
+```{r enrollment-view-college-names, eval=FALSE}
+print(unique(fall_enrollment$college))
+print(unique(spring_enrollment$college))
+```
+
+Thankfully, they are, so the rest is quite straightforward:
+```{r enrollment-view-college-names, eval=FALSE}
+fall_enrollment <- fall_enrollment %>%  
+  mutate(fy_college = case_when(
+    str_detect(college, "Agricultural & Life Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'cals'), # "Term" is listed like "Fall 2024" in the document, so we can just take the last four characters
+    str_detect(college, "Art & Architecture") ~ paste0(str_sub(term, start = -4, end = -1),'caa'),
+    str_detect(college, "Business & Economics") ~ paste0(str_sub(term, start = -4, end = -1),'cbe'),
+    str_detect(college, "Education, Health & Human Sci|WWAMI") ~ paste0(str_sub(term, start = -4, end = -1),'cehhs'),
+    str_detect(college, "Engineering") ~ paste0(str_sub(term, start = -4, end = -1),'coe'),
+    str_detect(college, "Letters Arts & Social Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'class'),
+    str_detect(college, "Law") ~ paste0(str_sub(term, start = -4, end = -1),'law'),
+    str_detect(college, "Natural Resources") ~ paste0(str_sub(term, start = -4, end = -1),'cnr'),
+    str_detect(college, "^Science$") ~ paste0(str_sub(term, start = -4, end = -1),'cos'),
+    TRUE ~ NA
+  )
+  ) %>% 
+  group_by(fy_college) %>%
+  summarize(enrollment = sum(enrollment, na.rm =  TRUE)) # generate data frame that sums enrollment numbers
+
+spring_enrollment <- spring_enrollment %>%  
+  mutate(fy_college = case_when(
+    str_detect(college, "Agricultural & Life Sciences") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cals'), # note the addition of the as.integer(...)-1 here because the "Spring 2024" term is in fiscal year 2023.
+    str_detect(college, "Art & Architecture") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'caa'),
+    str_detect(college, "Business & Economics") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cbe'),
+    str_detect(college, "Education, Health & Human Sci|WWAMI") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cehhs'),
+    str_detect(college, "Engineering") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'coe'),
+    str_detect(college, "Letters Arts & Social Sciences") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'class'),
+    str_detect(college, "Law") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'law'),
+    str_detect(college, "Natural Resources") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cnr'),
+    str_detect(college, "^Science$") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cos'),
+    TRUE ~ NA
+  )
+  ) %>% 
+  group_by(fy_college) %>%
+  summarize(enrollment = sum(enrollment, na.rm =  TRUE))
+```
+Note also another important observational-unit choice I had to make explicit in the snippet above: because our VERSO system classifies WWAMI publications as part of the CEHHS, to keep grant and enrollment data consistent I had to include that in `str_detect(college, "Education, Health & Human Sci|WWAMI")`.
+
+## Grant Funding
+The ultimate goal for grant funding is basically identical to enrollment, so the code looks very similar.
+
+Again, we make sure the College names are consistent:
+```{r grant-view-college-names, eval=FALSE}
+print(table(grant_funding$college))
+```
+
+In this case, they are decidedly not, so our `str_detects` have to be more flexible, but still uniquely pick out the proper Colleges. Because grant expenditure is also reported for units like the Provost Office, RCDS, etc., to keep it consistent with enrollment we have to omit them (again, another non-trivial research choice):
+
+```{r grant-view-college-names, eval=FALSE}
+grant_funding <- grant_funding %>% # generate fiscal year and college id's, sum funding and grant proposals, omit units other than the ones we intend to track
+  mutate(fy_college = case_when(
+    str_detect(college, regex("Agricultural &|and Life Sciences", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cals'),
+    str_detect(college, regex("Letters, Arts &|and Social Sci", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'class'),
+    str_detect(college, regex("Art &|and Architecture", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'caa'),
+    str_detect(college, regex("Business &|and Economics", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cbe'),
+    str_detect(college, regex("Education|WWAMI|Health", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cehhs'),
+    str_detect(college, regex("Engineering", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'coe'),
+    str_detect(college, regex("law", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'law'),
+    str_detect(college, regex("Natural Resources", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cnr'),
+    str_detect(college, regex("College of Science", ignore_case = TRUE)) ~ paste0('20',fiscal_year,'cos'),
+    TRUE ~ NA
+  )) %>% group_by(fy_college) %>% 
+  summarize(grant_funding = sum(grant_funding, na.rm =  TRUE),
+            grant_proposals = sum(as.integer(grant_proposals), na.rm = TRUE)) %>%
+  na.omit(fy_college)
+```
+
+But, that's it! We're done with data cleaning.

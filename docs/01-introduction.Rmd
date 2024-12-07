@@ -1,0 +1,32 @@
+---
+title: "Cleaning a dataset of U of I library database usage and institutional variables"
+author: "Norm Lee"
+date: "2024-12-06"
+output: html_document
+---
+
+## Motivation
+
+The U of I Library is continually searching for ways to assess its services to the University community. However, the library does not have standardized workflows for collecting and synthesizing some University-level variables (e.g., incoming grant funding, department/college level enrollment, number and character of research outputs produced, etc.). Moving from informal to formal assessment of these type of variables may provide new opportunities for assessment.
+
+This site is a proof-of-concept for developing those workflows in R. Since this initiative is in its early stages, this site does not focus on making actual inferences from the data. Instead, the goal is to demonstrate how the data can be processed and cleaned for potential quasi-experimental or interpretivist assessment. The project was not entirely successful; there are several flaws which this site will point out later. But - in my opinion - it was successful enough to demonstrate that such work is feasible given a properly formulated research question and realistic expectations of data quality and research design limitations.
+
+### Sources
+
+The "raw data" for this project includes:
+1. Spring and fall department enrollment numbers pulled from the [U of I IR Internal Dashboards](https://www.uidaho.edu/provost/ir/institutional-data/dashboards)
+2. University research outputs data pulled from the [Library's VERSO platform](https://verso.uidaho.edu/esploro/)
+3. Grant expenditure data from the U of I's [Research Reports Archive](https://www.uidaho.edu/research/news/research-reports/archive), and
+4. [U of I Library database](https://libguides.uidaho.edu/az/databases) usage statistics pulled from our internal LibApps system.
+
+All of these sources are observational and incomplete in a number of ways. A complete evaluation of how that limits useful assessment inference is outside the scope of this site. However, some of those issues will come up in data processing.
+
+### End goals
+
+The goals for this project were to:
+1. Take the raw data (retrieved as xlsx or csv's) and clean it.
+2. From the cleaned raw data, generate a set of tidy dataframes for further analysis.
+3. Store those dataframes in a SQL database.
+4. Visualize data from the SQL database in R in order to suggest interesting assessment options.
+
+The most important shortcoming of this project was an error in (2). Two of the three final dataframes created were not tidy, one of which in a way that can't easily be fixed and severely limits (4).

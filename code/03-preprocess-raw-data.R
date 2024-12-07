@@ -138,15 +138,15 @@ fall_enrollment <- fall_enrollment %>%
 # print(unique(spring_enrollment$college))
 spring_enrollment <- spring_enrollment %>%  
   mutate(fy_college = case_when(
-    str_detect(college, "Agricultural & Life Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'cals'),
-    str_detect(college, "Art & Architecture") ~ paste0(str_sub(term, start = -4, end = -1),'caa'),
-    str_detect(college, "Business & Economics") ~ paste0(str_sub(term, start = -4, end = -1),'cbe'),
-    str_detect(college, "Education, Health & Human Sci|WWAMI") ~ paste0(str_sub(term, start = -4, end = -1),'cehhs'),
-    str_detect(college, "Engineering") ~ paste0(str_sub(term, start = -4, end = -1),'coe'),
-    str_detect(college, "Letters Arts & Social Sciences") ~ paste0(str_sub(term, start = -4, end = -1),'class'),
-    str_detect(college, "Law") ~ paste0(str_sub(term, start = -4, end = -1),'law'),
-    str_detect(college, "Natural Resources") ~ paste0(str_sub(term, start = -4, end = -1),'cnr'),
-    str_detect(college, "^Science$") ~ paste0(str_sub(term, start = -4, end = -1),'cos'),
+    str_detect(college, "Agricultural & Life Sciences") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cals'),
+    str_detect(college, "Art & Architecture") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'caa'),
+    str_detect(college, "Business & Economics") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cbe'),
+    str_detect(college, "Education, Health & Human Sci|WWAMI") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cehhs'),
+    str_detect(college, "Engineering") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'coe'),
+    str_detect(college, "Letters Arts & Social Sciences") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'class'),
+    str_detect(college, "Law") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'law'),
+    str_detect(college, "Natural Resources") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cnr'),
+    str_detect(college, "^Science$") ~ paste0(as.integer(str_sub(term, start = -4, end = -1))-1,'cos'),
     TRUE ~ NA
   )
   ) %>% 
@@ -165,6 +165,8 @@ spring_enrollment <- spring_enrollment %>%
 # unique_funding_recipients <- data.frame(
 #   recipients = sort(unique(grant_funding$college),decreasing = FALSE, na.last = TRUE))
 # View(unique_funding_recipients)
+
+# grant funding ####
 
 grant_funding <- grant_funding %>% # generate fiscal year and college id's, sum funding and grant proposals, omit units other than the ones we intend to track
   mutate(fy_college = case_when(
