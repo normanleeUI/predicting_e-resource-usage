@@ -5,19 +5,22 @@ date: "2024-12-07"
 output: html_document
 ---
 ## Aggregating University-Level Variables
+
 Since we've made sure grants, research outputs, and enrollment numbers all have the fiscal year + College identifier, joining those tables together is easy:
+
 ```{r join-university-variables, eval=FALSE}
 university_variables <- full_join(spring_enrollment, fall_enrollment, by = "fy_college") %>%
   full_join(research_output_counts, by = "fy_college") %>%
   full_join(grant_funding, by = "fy_college")
 ```
 
-However, here we run into a problem about the range of the fiscal year + College identifiers. the Library's VERSO system has assets going back to the mid-20th century all the way up to 2024. But, I don't have enrollment or grant numbers for that entire range.
+However, here we run into a problem about the range of the fiscal year + College identifiers. The Library's VERSO system has assets going back to the mid-20th century all the way up to 2024. But, the raw data doesn't include enrollment or grant numbers for that entire range.
 
 Turns out, according to...
+
 ```{r check-fycoll-range, eval=FALSE}
-print(sort(na.omit(spring_enrollment_sums$fy_college))[1])
-print(sort(na.omit(spring_enrollment_sums$fy_college))[length(na.omit(spring_enrollment_sums$fy_college))])
+print(sort(na.omit(spring_enrollment_sums$fy_college))[1]) # sort the fy_college columns and get the first member
+print(sort(na.omit(spring_enrollment_sums$fy_college))[length(na.omit(spring_enrollment_sums$fy_college))]) # get the last member
 print(sort(na.omit(fall_enrollment_sums$fy_college))[1])
 print(sort(na.omit(fall_enrollment_sums$fy_college))[length(na.omit(fall_enrollment_sums$fy_college))])
 print(sort(na.omit(research_output_counts$fy_college))[1])
@@ -25,11 +28,12 @@ print(sort(na.omit(research_output_counts$fy_college))[length(na.omit(research_o
 print(sort(na.omit(grant_funding$fy_college))[1])
 print(sort(na.omit(grant_funding$fy_college))[length(na.omit(grant_funding$fy_college))])
 ```
+
 ...our raw data only covers all of these variables from FY 2015 to 2022. Rather than deal with incomplete data, I chose to omit all other years.
 
-Joining this table also forced me to make a decision about enrollment. Spring and fall enrollment came in two different tables, and the numbers in each are slightly different. Given that My observational unit is the fiscal year that spans both terms, how should I handle that?
+Joining this table also forced me to make an interesting decision about enrollment. Spring and fall enrollment came in two different tables, and the numbers in each are slightly different. Given that the observational unit is the fiscal year that spans both terms, how should I handle that?
 
-Again, if we might want our assessment to tell a story about how the number of people enrolled in the University affects Library database use, it seems plausible to add the two numbers. Originally, this seemed odd to me because many of the people enrolled in fall semester will probably also be enrolled in spring semester so it seemed like double-counting. However, similar to research outputs, we're not interested in individual people per se, but instead the effort they might expend at the University, leading them to use Library resources. Someone enrolled for two semesters presumably expends two semesters' worth of effort, so they can plausibly be counted twice.
+Again, if we might want our assessment to tell a story about how the number of people enrolled in the University affects Library database use, it seems plausible to just add the two numbers. Originally, this seemed odd to me because many of the people enrolled in fall semester will probably also be enrolled in spring semester so it seemed like double-counting. However, similar to research outputs, we're not interested in individual people per se, but instead the effort they might expend at the University, leading them to use Library resources. Someone enrolled for two semesters presumably expends two semesters' worth of effort, so they can plausibly be counted twice.
 
 This is imprecise but, again, at least we've codified (*code*-ified! :D) the assumption:
 
@@ -41,14 +45,15 @@ This is imprecise but, again, at least we've codified (*code*-ified! :D) the ass
          -enrollment.y)
 ```
 
-Next is constructing the final data.frame for Library database usage stats.
+
+## Aggregating Library Database Usage Data
 
 > **This is where my second, and more serious, error with tidiness occurred.** 
 
-Essentially, the original spreadsheet contained a Library database in each row, and the views counts for every month from fiscal year 2015 - 2022 each had their own column. So, Web of Science would have a columns for 2015.07 total views, 2015.08 total views, etc. My mistake was to just sum the proper columns for each row:
+Essentially, the original spreadsheet contained a Library database in each row. But, the database view counts for every month from fiscal year 2015 - 2022 each had their own column. So, Web of Science would have a columns for '2015.07 total views', '2015.08 total views', etc. My mistake was to just sum the proper columns for each row:
 
 ```{r database-stats-sum-views eval=FALSE}
-database_stats <- left_join(az_database_usage, az_database_list, by = join_by(ID == id)) # join data.frame containing database names, id's etc., with dataframe containing usage info
+database_stats <- left_join(az_database_usage, az_database_list, by = join_by(ID == id)) # join data.frames containing database names, id's etc., with dataframe containing usage info
 database_stats <- database_stats %>% 
   mutate(total_views_fy15 = rowSums(database_stats[,12:23]), # sum monthly viewership columns into fiscal year viewerships
          total_views_fy16 = rowSums(database_stats[,24:35]),
@@ -86,14 +91,16 @@ database_stats <- database_stats %>%
 ###
 ```
 
-What I should have done was to split this data.frame into two: one that contained database information, and another - linked to the first by database id - containing view information in one column and annual year indices in another.
+What I should have done was to never join the az_database_list and az_database_usage data.frames in the first place. Instead, I should've linked the az_database_list table - which contained things like database_names to the database usage once via some id.
 
 I didn't do that because of three limitations in my thinking:
-1. I unquestioningly accepted that all the database info, including views, should remain in the same data.frame (and therefore the same table in the SQL database). It seemed obvious to me that doing so would make processing easier; something I only discovered to be wrong late in the project when attempting to visualize interesting relationships.
+
+1. I unquestioningly accepted that all the database info, including views, should remain in the same data.frame (and therefore the same table in the SQL database). It seemed obvious to me that doing so would make processing easier; something I only discovered was wrong late in the project when attempting to visualize interesting relationships.
 2. I knew that having many repetitive entries within a single column can be an indicator of untidy data. Given (1) above as a constraint, the easiest way to aggregate all database view information into a single column was to pivot_longer the database table. E.g., using something like this:
+
 ```{r database-usage-pivot-longer, eval=false}
 # an unusued version of the database_statistics data.frame.
-transposed_database_stats = pivot_longer(database_stats, cols = total_views_fy16:total_views_fy22) %>%
+transposed_database_stats = pivot_longer(database_stats, cols = total_views_fy15:total_views_fy22) %>%
   select(id,
          database_name,
          relevant_colleges,
@@ -104,11 +111,16 @@ transposed_database_stats = pivot_longer(database_stats, cols = total_views_fy16
            lapply(relevant_colleges[[x]], function(y) paste0(fiscal_year[[x]],y))
          }))
 ```
+
 However, the snippet above leads to lots of repetition in columns like database_name, id (i.e., a database id), and relevant_colleges, so it seemed wrong to me.
 
-3. The final limitation was that, after (a) worrying about reptitive entries and (b) failing to realize splitting the data.frame was a reasonable option, I failed to notice that keeping each FY's views in its own column ultimately violates the tidy data precept of one variable per column.
+3. The final limitation was that, after worrying about repetitive entries but failing to realize splitting the data.frame was a reasonable option, I failed to notice that keeping each FY's views in its own column ultimately violates the tidy data precept of one variable per column.
 
-Regardless, I continued on my merry way until I started trying to visualize things. In the meantime, I still need to somehow connect databases to our other observation unit of "FY + College". To do so, I keyword search the database_stats "subjects" column - "subjects" as in "these are academic subjects where a researcher might find this database useful" - assuming there is some connection between:
+Regardless, I continued on my merry way until I started trying to visualize things.
+
+## Connecting Databases to Colleges
+
+In the meantime, I still need to somehow connect databases to our other observational unit of "FY + College". To do so, I keyword search the database_stats "subjects" column - "subjects" as in "these are academic subjects where a researcher might find this database useful" - assuming there is some connection between:
 
 1. The work researchers do and the Colleges they are enrolled in.
 2. The subject tags and how users actually choose which database to access.
@@ -133,7 +145,7 @@ Regardless, I continued on my merry way until I started trying to visualize thin
     fiscal_year = c(2015:2022) # this vector is b/c the dataset spans FY's 15-22
     unlist(lapply(relevant_colleges[[x]], function(y) paste0(fiscal_year,y)))})) %>% # since each entry of relevant_colleges is a vector of length n >= 1, we have to iterate through them and apply a paste0 to each entry in order to generate a list of relevant FY-coll ID's
   filter(database_name != "[Deleted]") %>% # databases which the library no longer has access to were recorded as "[Deleted]" in the spreadsheet. Since they had incomplete data, they were removed from the analysis.
-  filter(relevant_colleges != "character(0)") # some databases were not tagged with any subjects (subject tagging is often manually done by librarians), so they were removed from the analysis.
+  filter(relevant_colleges != "character(0)") # Some databases were not tagged with any subjects (subject tagging is often manually done by librarians), so they were removed from the analysis.
 ```
 
 With this information I can now generate a data.frame that records which databases are relevant to which FY's and Colleges:
@@ -153,11 +165,12 @@ database_stats <- database_stats %>% # remove the now-unnecessary columns from t
           -relevant_fycolls
 )
 ```
+
 > As a complete aside, I still do not understand why I could not declare and process the database_fycoll_combos data.frame within one pipe chain. The error I got when I tried to do so said database_fycoll_combos does not exist. Thoughts would be much appreciated!
 
 ## Creating the SQL DB and Writing to it
 
-That does it for our final, processed data.frames! We can now create a SQL database to store them in so we don't have to do all that data processing every time we want to work with them or send them to collaborators/reproducers.
+That does it for our final, processed data.frames! We can now create a SQL database to store them so we don't have to do all that data processing every time we want to work with them or send them to collaborators/reproducers.
 
 Because none of the columns in our final data.frames have nested lists, and we didn't see any special characters that might cause encoding issues in the data, doing so is quite straightforward. We do have some columns (e.g., "database_name") where the lengths of entries are not standardized, but since this is a relatively small dataset we can just provide generous memory allocations without worrying about finding their exact maximum length.
 

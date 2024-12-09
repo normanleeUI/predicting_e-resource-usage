@@ -7,7 +7,7 @@ output: html_document
 
 ## Loading the Data
 
-We can load the data from our fancy new SQL database:
+We can load the data from our fancy new SQL database pretty easily:
 
 ```{r load-sql-data, eval=FALSE}
 predicting_resource_usage_db <- dbConnect(RSQLite::SQLite(), "processed_data/predicting_resource_usage.db")
@@ -22,7 +22,9 @@ all_data <- full_join(database_vars, combos, by = "database_id") %>% full_join(u
 
 Unfortunately, visualization is where untidiness comes back to bite me, and I learn a lot about the pitfalls of creating a "proof-of-concept" data processing workflow.
 
-If we recall, my two untidiness errors were: 1. Encoding both the fiscal year and College variables in one column in every database table. 2. Encoding both database views and fiscal year in the same column, across multiple columns of the "database_stats" - loaded here as "database_vars" - data.frame.
+If we recall, my two untidiness errors were:
+1. Encoding both the fiscal year and College variables in a single column.
+2. Encoding both database views and fiscal year in the same column, across multiple columns of the "database_stats" - loaded here as "database_vars" - data.frame.
 
 Error 1 ended up being not that bad, because we can do a fairly simple mutate to the data.frame to split those variables, or we can split them ad hoc when visualizing the data. E.g., this visualization of the amount of research "effort" for the College of Engineering, broken down by fiscal year:
 
@@ -48,16 +50,16 @@ ggplot(data = dat_long,
   ggtitle("Web of Science views by Fiscal Year")
 ```
 
-But doing so is cumbersome. It becomes moreso when combining the two data.frames to explore relationships between university variables and Library database usage because the fiscal year variables are encoded in two different
+But doing so is cumbersome. It becomes more so when combining the two data.frames to explore relationships between university variables and Library database usage because the fiscal year variables are encoded in two different, mutually contradictory, ways.
 
-For instance:
+For instance...
 
 ```{r all-data, eval=FALSE}
 dat <- filter(all_data, str_detect(database_name, "Web of Science") & str_detect(relevant_fycolls, "coe"))
 dat_long <- pivot_longer(dat, cols = c(5:12))
 ```
 
-Produces a data.frame where the "relevant_fycolls" column repeats 7 times, one for each entry in the total databases views column (total_views_fy15, total_views_fy16, etc.). So, we have to add an additional filter to only retrieve the rows where those two columns match up:
+...produces a data.frame where entries in the "relevant_fycolls" column are repeated 7 times, one for each entry in the total databases views column (total_views_fy15, total_views_fy16, etc.). So, we have to add an additional filter to only retrieve the rows where those two columns match up:
 
 ```{r all-data-fixed, eval=FALSE}
 dat <- filter(all_data, str_detect(database_name, "Web of Science") & str_detect(relevant_fycolls, "coe"))
@@ -81,9 +83,10 @@ ggplot(dat_long, aes(x = total_enrollment,
 ```
 
 ## Conclusion
+
 Though not 100% successful, this project was still valuable for a number of reasons.
 
-First and foremost, for exploratory analyses without a definite research question, brainstorming concrete research questions you may want to answer - like the above - *at the beginning* can help with ensuring tidy data.
+First and foremost, I learned that for exploratory analyses without a definite research question, brainstorming concrete research questions you may want to answer - like the above - *at the beginning* can help with ensuring tidy data.
 
 Second, working through a data processing workflow can be helpful for uncovering researcher degrees of freedom. In this case, navigating the ambiguities around things like...
 
@@ -91,3 +94,5 @@ Second, working through a data processing workflow can be helpful for uncovering
 - using database subject tags to justify connecting databases with Colleges
 
 ...can help inform potential future research designs, even determining whether data quality is high enough to justify the research.
+
+Finally, I learned a bunch of R!
