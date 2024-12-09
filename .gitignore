@@ -1,7 +1,6 @@
 .Rproj.user/
 outputs/
 processed_data/
-raw_data/
 .Rhistory
 *.docx
 *.jpg
@@ -11,3 +10,4 @@ raw_data/
 *.jpeg
 *.xlsx
 *.db
+*.csv
