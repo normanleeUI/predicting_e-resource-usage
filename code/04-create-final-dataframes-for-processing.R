@@ -12,7 +12,7 @@ university_variables <- full_join(spring_enrollment, fall_enrollment, by = "fy_c
   full_join(research_output_counts, by = "fy_college") %>%
   full_join(grant_funding, by = "fy_college") %>%
   na.omit(fy_college) %>% 
-  mutate(total_enrollment = ceiling((enrollment.x+enrollment.y)/2)) %>% 
+  mutate(total_enrollment = enrollment.x+enrollment.y) %>% 
   select(-enrollment.x,
          -enrollment.y)
 
@@ -74,7 +74,7 @@ database_fycoll_combos <- data.frame(
   database_id = unlist(sapply(1:nrow(database_stats), function(i){
     rep(database_stats$database_id[i], length(database_stats$relevant_fycolls[[i]]))
   })),
-  relevant_fycolls = unlist(sapply(1:nrow(database_stats), function(i) database_stats$relevant_fycolls)))
+  relevant_fycolls = unlist(sapply(1:nrow(database_stats), function(i) database_stats$relevant_fycolls[[i]])))
 
 database_fycoll_combos <- database_fycoll_combos %>% 
   mutate(combo_id = UUIDgenerate(n=nrow(database_fycoll_combos), output = "string"))

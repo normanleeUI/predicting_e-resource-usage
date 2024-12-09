@@ -11,7 +11,7 @@ The U of I Library is continually searching for ways to assess its services to t
 
 This site is a proof-of-concept for developing those workflows in R. Since this initiative is in its early stages, this site does not focus on making actual inferences from the data. Instead, the goal is to demonstrate how the data can be processed and cleaned for potential quasi-experimental or interpretivist assessment. The project was not entirely successful; there are several flaws which this site will point out later. But - in my opinion - it was successful enough to demonstrate that such work is feasible given a properly formulated research question and realistic expectations of data quality and research design limitations.
 
-### Sources
+## Sources
 
 The "raw data" for this project includes:
 1. Spring and fall department enrollment numbers pulled from the [U of I IR Internal Dashboards](https://www.uidaho.edu/provost/ir/institutional-data/dashboards)
@@ -21,7 +21,7 @@ The "raw data" for this project includes:
 
 All of these sources are observational and incomplete in a number of ways. A complete evaluation of how that limits useful assessment inference is outside the scope of this site. However, some of those issues will come up in data processing.
 
-### End goals
+## End goals
 
 The goals for this project were to:
 1. Take the raw data (retrieved as xlsx or csv's) and clean it.
@@ -30,3 +30,13 @@ The goals for this project were to:
 4. Visualize data from the SQL database in R in order to suggest interesting assessment options.
 
 The most important shortcoming of this project was an error in (2). Two of the three final dataframes created were not tidy, one of which in a way that can't easily be fixed and severely limits (4).
+
+## Following along
+Because some of the data included in this analysis was confidential, this document does not dynamically process any of it.
+
+However, I created an anonymized version of the data so readers can follow along. To use it:
+
+1. Clone this repository.
+2. Extract sample-raw-data.zip into the raw_data directory.
+
+From there, you can either run the entire analysis all at once using code/00-main.R, or follow along in R scripts 01-06.

@@ -7,7 +7,7 @@ library(lubridate)
 library(stringr)
 library(uuid)
 library(ggplot2)
-library(viridis)
+library(ggrepel)
 
 # load raw data ####
 az_database_list <- read.csv('raw_data/az_database_list.csv')

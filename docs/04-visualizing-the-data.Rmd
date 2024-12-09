@@ -1,0 +1,93 @@
+---
+title: "Visualizing the Data"
+author: "Norm Lee"
+date: "2024-12-09"
+output: html_document
+---
+
+## Loading the Data
+
+We can load the data from our fancy new SQL database:
+
+```{r load-sql-data, eval=FALSE}
+predicting_resource_usage_db <- dbConnect(RSQLite::SQLite(), "processed_data/predicting_resource_usage.db")
+univ_vars <- dbGetQuery(predicting_resource_usage_db, "SELECT * FROM university_variables;")
+database_vars <- dbGetQuery(predicting_resource_usage_db, "SELECT * FROM resource_variables;")
+combos <- dbGetQuery(predicting_resource_usage_db, "SELECT * FROM database_fycoll_combos;")
+all_data <- full_join(database_vars, combos, by = "database_id") %>% full_join(univ_vars, join_by("relevant_fycolls" == "fy_college"))
+
+```
+
+## Visualizing the Data
+
+Unfortunately, visualization is where untidiness comes back to bite me, and I learn a lot about the pitfalls of creating a "proof-of-concept" data processing workflow.
+
+If we recall, my two untidiness errors were: 1. Encoding both the fiscal year and College variables in one column in every database table. 2. Encoding both database views and fiscal year in the same column, across multiple columns of the "database_stats" - loaded here as "database_vars" - data.frame.
+
+Error 1 ended up being not that bad, because we can do a fairly simple mutate to the data.frame to split those variables, or we can split them ad hoc when visualizing the data. E.g., this visualization of the amount of research "effort" for the College of Engineering, broken down by fiscal year:
+
+```{r coe-research-output-visualization, eval=FALSE}
+ggplot(data = filter(univ_vars, str_detect(fy_college, "coe")), # split out the "College" part
+       mapping = aes(x = str_sub(fy_college, 1, 4),y = total_outputs)) + # split out the FY part.
+  geom_point() + 
+  labs(x = "Fiscal Year",
+       y = "Research Output (effort units)") +
+  ggtitle("Research Output \"Effort\": College of Engineering")
+```
+
+Error 2 is much more problematic. Without going back and modifying the database schema, we can fix it post-hoc by retrieving the row we want and pivoting that into a more workable dataframe:
+
+```{r web-of-science-usage, eval=FALSE}
+dat <- filter(database_vars, str_detect(database_name, "Web of Science"))
+dat_long <- pivot_longer(dat, cols = c(5:12))
+ggplot(data = dat_long,
+       mapping = aes(x = str_sub(name, -2, -1), y = value)) +
+  geom_point() + 
+  labs(x = "Fiscal Year",
+       y = "Database Views") +
+  ggtitle("Web of Science views by Fiscal Year")
+```
+
+But doing so is cumbersome. It becomes moreso when combining the two data.frames to explore relationships between university variables and Library database usage because the fiscal year variables are encoded in two different
+
+For instance:
+
+```{r all-data, eval=FALSE}
+dat <- filter(all_data, str_detect(database_name, "Web of Science") & str_detect(relevant_fycolls, "coe"))
+dat_long <- pivot_longer(dat, cols = c(5:12))
+```
+
+Produces a data.frame where the "relevant_fycolls" column repeats 7 times, one for each entry in the total databases views column (total_views_fy15, total_views_fy16, etc.). So, we have to add an additional filter to only retrieve the rows where those two columns match up:
+
+```{r all-data-fixed, eval=FALSE}
+dat <- filter(all_data, str_detect(database_name, "Web of Science") & str_detect(relevant_fycolls, "coe"))
+dat_long <- filter(pivot_longer(dat, cols = c(5:12)), as.integer(str_sub(relevant_fycolls, 3, 4)) == str_sub(name, -2, -1))
+```
+
+Then, we can visualize:
+
+```{r wos-usage-by-coe-enrollment}
+ggplot(dat_long, aes(x = total_enrollment,
+                     y = value,
+                     label = paste0('FY',str_sub(relevant_fycolls, 3, 4)))) +
+  geom_line() +
+  geom_point() +
+  geom_text_repel(size = 2.5,
+                  force_pull = 3,
+                  force = 5) + 
+  labs(x = "Total Enrollment",
+       y = "Database Views")+
+  ggtitle("Web of Science usage by CoE Enrollment (FY15:22)")
+```
+
+## Conclusion
+Though not 100% successful, this project was still valuable for a number of reasons.
+
+First and foremost, for exploratory analyses without a definite research question, brainstorming concrete research questions you may want to answer - like the above - *at the beginning* can help with ensuring tidy data.
+
+Second, working through a data processing workflow can be helpful for uncovering researcher degrees of freedom. In this case, navigating the ambiguities around things like...
+
+- using assets or enrollment as a proxy for research "effort" which may predict library usage
+- using database subject tags to justify connecting databases with Colleges
+
+...can help inform potential future research designs, even determining whether data quality is high enough to justify the research.

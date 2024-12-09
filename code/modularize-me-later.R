@@ -349,12 +349,12 @@ database_stats <- database_stats %>%
   select(-total_views_fy23) # only have grant funding data up to fy22
   
 # probably not necessary
-# transposed_database_stats = pivot_longer(database_stats, cols = total_views_fy16:total_views_fy22) %>% 
+# transposed_database_stats = pivot_longer(database_stats, cols = total_views_fy16:total_views_fy22) %>%
 #   select(id,
 #          database_name,
 #          relevant_colleges,
 #          fiscal_year = "name",
-#          views = "value") %>% 
+#          views = "value") %>%
 #   mutate(fiscal_year = paste0("20",str_sub(fiscal_year, -2, -1)),
 #          fy_college = lapply(1:length(relevant_colleges), function(x){
 #            lapply(relevant_colleges[[x]], function(y) paste0(fiscal_year[[x]],y))
