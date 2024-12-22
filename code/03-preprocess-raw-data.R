@@ -190,3 +190,84 @@ grant_funding <- grant_funding %>% # generate fiscal year and college id's, sum 
 # view(filter(grant_funding, is.na(fy_college)))
 # print(table(grant_funding$fy_college)[table(grant_funding$fy_college) > 1])
 ###
+
+# print(data.frame(
+#   index = 1:ncol(az_database_usage),
+#   column_name = names(az_database_usage)
+# ))
+
+# az_database_usage <- left_join(az_database_usage, az_database_list, by = join_by(ID == id))
+az_database_usage <- az_database_usage %>% 
+  mutate(total_views_fy15 = rowSums(az_database_usage[,12:23]),
+         total_views_fy16 = rowSums(az_database_usage[,24:35]),
+         total_views_fy17 = rowSums(az_database_usage[,36:47]),
+         total_views_fy18 = rowSums(az_database_usage[,48:59]),
+         total_views_fy19 = rowSums(az_database_usage[,60:71]),
+         total_views_fy20 = rowSums(az_database_usage[,72:83]),
+         total_views_fy21 = rowSums(az_database_usage[,84:95]),
+         total_views_fy22 = rowSums(az_database_usage[,96:107]),
+         total_views_fy23 = rowSums(az_database_usage[,108:119]),
+         remaining_views = rowSums(az_database_usage[,c(5:11,120:125)]),
+  ) %>% 
+  select(
+    database_id = "ID",
+    # database_name = "Name",
+    # database_subjects = "subjects",
+    # total_database_views = "Total",
+    total_views_fy15,
+    total_views_fy16,
+    total_views_fy17,
+    total_views_fy18,
+    total_views_fy19,
+    total_views_fy20,
+    total_views_fy21,
+    total_views_fy22,
+    # total_views_fy23,
+    # remaining_views,
+  ) %>% 
+  pivot_longer(cols = total_views_fy15:total_views_fy22) %>%
+  mutate(fy = str_sub(name, -2, -1)) %>%
+  select(-name,
+         views = "value")
+az_database_usage <- az_database_usage %>% 
+  mutate(view_id = UUIDgenerate(n=nrow(az_database_usage), output = "string"))
+    # select(database,
+    #        database_name,
+    #        relevant_colleges,
+    #        fiscal_year = "name",
+    #        views = "value") %>%
+    # mutate(fiscal_year = paste0("20",str_sub(fiscal_year, -2, -1)),
+    #        fy_college = lapply(1:length(relevant_colleges), function(x){
+    #          lapply(relevant_colleges[[x]], function(y) paste0(fiscal_year[[x]],y))
+    #        }))
+
+az_database_list <- az_database_list %>% 
+  mutate(relevant_colleges =lapply(1:nrow(az_database_list), function(i){
+    college_list = c(
+      case_when(str_detect(subjects[i], regex("Business|Economics", ignore_case = TRUE)) ~ "cbe"),
+      case_when(str_detect(subjects[i], regex("Computing|Electronics|Engineering|Chemistry|environmental", ignore_case = TRUE)) ~ "coe"),
+      case_when(str_detect(subjects[i], regex("Education|Health|Medicine|curriculum", ignore_case = TRUE)) ~ "cehhs"),
+      case_when(str_detect(subjects[i], regex("history|philosophy|religious|literature|anthropology|sociology|political|psychology|international|language", ignore_case = TRUE)) ~ "class"),
+      case_when(str_detect(subjects[i], regex("architecture|music|literature", ignore_case = TRUE)) ~ "caa"),
+      case_when(str_detect(subjects[i], regex("agricultural|family|geospatial|veterinary", ignore_case = TRUE)) ~ "cals"),
+      case_when(str_detect(subjects[i], regex("physics|earth|chemistry|biology|geography|geology|geospatial|mathematics", ignore_case = TRUE)) ~ "cos"),
+      case_when(str_detect(subjects[i], regex("geospatial|forestry|wildlife|fisheries|geography|environmental", ignore_case = TRUE)) ~ "cnr"),
+      case_when(str_detect(subjects[i], regex("law", ignore_case = TRUE)) ~ "law"))
+    
+    college_list <- college_list[!is.na(college_list)]
+  })) %>% 
+  # relevant_fycolls = lapply(1:length(relevant_colleges), function(x){
+  #   fiscal_year = c(2015:2022)
+  #   unlist(lapply(relevant_colleges[[x]], function(y) paste0(fiscal_year,y)))})) %>%
+  filter(name != "[Deleted]") %>%
+  filter(relevant_colleges != "character(0)") %>% 
+  select(database_id = "id",
+         database_name = "name",
+         description,
+         subjects,
+         relevant_colleges)
+
+# debug
+# az_database_usage <- az_database_usage %>% 
+#   mutate(math_check = rowSums(az_database_usage[,5:14]) == total_views) %>% 
+#   filter(math_check == FALSE)
