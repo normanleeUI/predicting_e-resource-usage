@@ -1,4 +1,4 @@
-# visualize ####
+# visualize
 
 # CoE outputs by fiscal year
 ggplot(data = filter(univ_vars, str_detect(fy_college, "coe")),
